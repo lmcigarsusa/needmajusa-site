@@ -64,25 +64,49 @@ const services = [
   { icon: Ship, title: "Port Drayage", text: "Support for freight moving through South Florida and other major ports." },
 ];
 
+// Web3Forms public access key: sends quote requests to the inbox it was created with.
+// It is designed to be public; it can only deliver to that inbox.
+const WEB3FORMS_ACCESS_KEY = "4f7597aa-d6c0-4b2e-aa07-a9b0b2495e7f";
+
 const navItems = [
   ["Services", "#services"], ["Cross-Docking", "#cross-docking"], ["How It Works", "#process"], ["Storage", "#storage"], ["Contact", "#quote"],
 ];
 
 function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
-  function submitQuote(event: FormEvent<HTMLFormElement>) {
+  async function submitQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const subject = encodeURIComponent(`Warehouse quote request from ${form.get("company") || form.get("name")}`);
-    const body = encodeURIComponent([
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const subject = `Warehouse quote request from ${form.get("company") || form.get("name")}`;
+    const message = [
       `Name: ${form.get("name")}`, `Company: ${form.get("company")}`, `Phone: ${form.get("phone")}`, `Email: ${form.get("email")}`,
       `Service: ${form.get("service")}`, `Approx. pallets: ${form.get("pallets") || "Not provided"}`, `Freight type: ${form.get("freight") || "Not provided"}`,
       `Origin: ${form.get("origin") || "Not provided"}`, `Destination: ${form.get("destination") || "Not provided"}`, `Details: ${form.get("details")}`,
-    ].join("\n"));
-    setSent(true);
-    window.location.href = `mailto:lm.cigarsusa@gmail.com?subject=${subject}&body=${body}`;
+    ].join("\n");
+    setStatus("sending");
+    try {
+      const response = await fetch("https://api.web3forms.com/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_ACCESS_KEY,
+          subject,
+          from_name: "Needmaj website",
+          replyto: form.get("email"),
+          name: form.get("name"),
+          email: form.get("email"),
+          message,
+        }),
+      });
+      if (!response.ok) throw new Error(`Web3Forms returned ${response.status}`);
+      formElement.reset();
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
   }
 
   return (
@@ -165,13 +189,13 @@ function HomePage() {
 
       <section id="quote" className="bg-background py-20 lg:py-28">
         <div className="mx-auto grid max-w-7xl gap-14 px-5 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
-          <div><p className="text-sm font-bold uppercase tracking-widest text-primary">Let’s move your freight forward</p><h2 className="mt-4 text-5xl font-extrabold uppercase leading-none sm:text-6xl">Tell us what needs handling.</h2><p className="mt-5 leading-7 text-muted-foreground">Share the basics and your email app will prepare the request for Needmaj.</p><div className="mt-10 border-t border-border pt-8"><p className="mb-6 text-xs font-bold uppercase tracking-widest text-muted-foreground">Or call us directly</p><div className="space-y-5"><ContactLine icon={Phone} title="Jacob" value="754-357-7323" href="tel:+17543577323"/><ContactLine icon={Mail} title="Email" value="lm.cigarsusa@gmail.com" href="mailto:lm.cigarsusa@gmail.com"/><ContactLine icon={MapPin} title="Warehouse" value="3480 NW 27th Ave, Ste. E6, Pompano Beach, FL 33069" /></div></div></div>
+          <div><p className="text-sm font-bold uppercase tracking-widest text-primary">Let’s move your freight forward</p><h2 className="mt-4 text-5xl font-extrabold uppercase leading-none sm:text-6xl">Tell us what needs handling.</h2><p className="mt-5 leading-7 text-muted-foreground">Share the basics and we'll get back to you with a quote.</p><div className="mt-10 border-t border-border pt-8"><p className="mb-6 text-xs font-bold uppercase tracking-widest text-muted-foreground">Or call us directly</p><div className="space-y-5"><ContactLine icon={Phone} title="Jacob" value="754-357-7323" href="tel:+17543577323"/><ContactLine icon={Mail} title="Email" value="lm.cigarsusa@gmail.com" href="mailto:lm.cigarsusa@gmail.com"/><ContactLine icon={MapPin} title="Warehouse" value="3480 NW 27th Ave, Ste. E6, Pompano Beach, FL 33069" /></div></div></div>
           <form onSubmit={submitQuote} className="border border-border bg-secondary p-6 sm:p-9">
             <div className="grid gap-5 sm:grid-cols-2"><Field label="Name" name="name" required/><Field label="Company" name="company" required/><Field label="Phone" name="phone" type="tel" required/><Field label="Email" name="email" type="email" required/>
               <label className="grid gap-2 text-sm font-bold">Desired service<select name="service" required className="h-12 border border-input bg-background px-3 font-normal outline-none focus:border-primary"><option value="">Select a service</option>{["Receiving","Unloading","Cross-Docking","Palletizing","Wrapping","Storage","Transloading","Outbound Shipping","Port Drayage","Other"].map(x=><option key={x}>{x}</option>)}</select></label>
               <Field label="Approx. number of pallets" name="pallets" inputMode="numeric"/><Field label="Freight type" name="freight"/><Field label="Origin" name="origin"/><Field label="Destination" name="destination"/>
               <label className="grid gap-2 text-sm font-bold sm:col-span-2">Additional details<textarea name="details" required rows={4} className="border border-input bg-background px-3 py-3 font-normal outline-none focus:border-primary" placeholder="What needs to arrive, be handled, stored, or shipped?"/></label>
-            </div><Button type="submit" variant="accent" size="lg" className="mt-6 w-full">Prepare quote request <Send className="size-5"/></Button>{sent && <p role="status" className="mt-4 flex items-center gap-2 text-sm font-semibold text-primary"><Check className="size-5"/>Your email app is opening with the request details.</p>}
+            </div><Button type="submit" variant="accent" size="lg" className="mt-6 w-full" disabled={status === "sending"}>{status === "sending" ? "Sending…" : "Send quote request"} <Send className="size-5"/></Button>{status === "sent" && <p role="status" className="mt-4 flex items-center gap-2 text-sm font-semibold text-primary"><Check className="size-5"/>Thank you — your request was sent. We'll be in touch shortly.</p>}{status === "error" && <p role="alert" className="mt-4 text-sm font-semibold text-destructive">Something went wrong. Please call Jacob at 754-357-7323.</p>}
           </form>
         </div>
       </section>
